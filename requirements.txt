@@ -1,0 +1,6 @@
+Flask==2.3.2
+Werkzeug==2.3.3
+pdfplumber==0.7.5
+gTTS==2.2.4
+SpeechRecognition==3.8.1
+groq

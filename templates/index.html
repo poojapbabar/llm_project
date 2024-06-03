@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>WELCOME TO LLM Model</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            height: 100vh;
+            background-color: #1e1e1e;
+            color: #e0e0e0;
+            margin: 0;
+        }
+        .sidebar {
+            width: 200px;
+            background-color: #333;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            padding-top: 15px;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.5);
+        }
+        .sidebar-header {
+            padding: 15px;
+            text-align: center;
+            font-weight: bold;
+            background-color: #444;
+            border-bottom: 1px solid #555;
+        }
+        .history-item {
+            padding: 10px;
+            border-bottom: 1px solid #444;
+            cursor: pointer;
+        }
+        .history-item:hover {
+            background-color: #555;
+        }
+        .chat-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        .chat-header, .chat-footer {
+            padding: 15px;
+            background-color: #007bff;
+            color: white;
+            text-align: center;
+        }
+        .chat-body {
+            padding: 15px;
+            overflow-y: auto;
+            flex: 1;
+            background-color: #2b2b2b;
+        }
+        .message {
+            margin-bottom: 15px;
+        }
+        .message.user {
+            text-align: right;
+        }
+        .message.bot {
+            text-align: left;
+        }
+        .message .text {
+            display: inline-block;
+            padding: 10px 15px;
+            border-radius: 15px;
+            background-color: #444;
+        }
+        .message.user .text {
+            background-color: #007bff;
+            color: white;
+        }
+        .chat-input-container {
+            display: flex;
+            border-top: 1px solid #444;
+        }
+        .chat-input {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            background-color: #333;
+            color: white;
+            border-radius: 0;
+        }
+        .send-btn, .file-input-btn, .voice-input-btn, .play-btn, .pause-btn {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            cursor: pointer;
+        }
+        .file-input {
+            display: none;
+        }
+        .file-label {
+            display: flex;
+            align-items: center;
+        }
+        .file-label span {
+            margin-left: 10px;
+            color: #aaa;
+        }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <div class="sidebar-header">Chat History</div>
+        <div id="chat-history" class="chat-history" aria-live="polite">
+            <!-- Chat history items will appear here -->
+        </div>
+    </div>
+    <div class="chat-container">
+        <div class="chat-header">
+            Groq GPT
+        </div>
+        <div class="chat-body" id="chat-body" role="log" aria-live="polite">
+            <!-- Messages will appear here -->
+        </div>
+        <div class="chat-footer">
+            <div class="chat-input-container">
+                <label for="user_input" class="visually-hidden">Type your message</label>
+                <input type="text" id="user_input" class="chat-input" placeholder="Type your message..." aria-label="Type your message">
+                <label class="file-label" for="file_input_btn">
+                    <button id="file_input_btn" class="file-input-btn" aria-label="Upload PDF">Upload PDF</button>
+                    <span id="file-name"></span>
+                </label>
+                <input type="file" id="file_input" class="file-input" aria-label="Upload PDF">
+                <button id="voice_input_btn" class="voice-input-btn" aria-label="Start voice recognition">🎤</button>
+                <button id="send_btn" class="send-btn" aria-label="Send message">Send</button>
+                <button id="play_btn" class="play-btn" aria-label="Play voice">Play</button>
+                <button id="pause_btn" class="pause-btn" aria-label="Pause voice">Pause</button>
+                <select id="language_selector" aria-label="Select language">
+                    <option value="1">English</option>
+                    <option value="2">Kannada</option>
+                    <option value="3">Hindi</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        $(document).ready(function() {
+            const chatHistory = [];
+            let speechSynthesisUtterance;
+            let currentMessage = '';
+
+            function loadChatHistory() {
+                $('#chat-history').empty();
+                chatHistory.forEach((item, index) => {
+                    $('#chat-history').append(`<div class="history-item" data-index="${index}">${item.user}: ${item.bot}</div>`);
+                });
+            }
+
+            $('#file_input_btn').click(function() {
+                $('#file_input').click();
+            });
+
+            $('#file_input').change(function() {
+                const fileName = this.files[0].name;
+                $('#file-name').text(fileName);
+            });
+
+            $('#send_btn').click(function() {
+                sendMessage();
+            });
+
+            $('#user_input').keypress(function(e) {
+                if (e.which == 13) {
+                    sendMessage();
+                }
+            });
+
+            $('#voice_input_btn').click(function() {
+                startVoiceRecognition();
+            });
+
+            $('#play_btn').click(function() {
+                playSpeech();
+            });
+
+            $('#pause_btn').click(function() {
+                pauseSpeech();
+            });
+
+            $('#chat-history').on('click', '.history-item', function() {
+                const index = $(this).data('index');
+                const history = chatHistory[index];
+                $('#chat-body').html(`<div class="message user"><div class="text">${history.user}</div></div><div class="message bot"><div class="text">${history.bot}</div></div>`);
+            });
+
+            function sendMessage() {
+                const userInput = $('#user_input').val().trim();
+                const fileInput = $('#file_input')[0].files[0];
+                const selectedLanguage = $('#language_selector').val();
+                
+                if (userInput || fileInput) {
+                    appendMessage('user', userInput);
+                    $('#user_input').val('');
+                    $('#file-name').text(''); // Clear file name display
+                    
+                    let formData = new FormData();
+                    formData.append('user_input', userInput);
+                    if (fileInput) {
+                        formData.append('file', fileInput);
+                    }
+                    formData.append('language', selectedLanguage);
+
+                    $.ajax({
+                        url: '/generate',
+                        type: 'POST',
+                        data: formData,
+                        processData: false,
+                        contentType: false,
+                        success: function(response) {
+                            if (response.error) {
+                                appendMessage('bot', 'Error: ' + response.error);
+                                provideAudioFeedback('Error: ' + response.error);
+                            } else {
+                                appendMessage('bot', response.output);
+                                chatHistory.push({ user: userInput, bot: response.output });
+                                loadChatHistory();
+                                currentMessage = response.output;
+                                provideAudioFeedback(currentMessage);
+                                if (response.audio_url) {
+                                    playAudio(response.audio_url);
+                                }
+                            }
+                        },
+                        error: function(jqXHR, textStatus, errorThrown) {
+                            appendMessage('bot', 'Error: ' + textStatus);
+                            provideAudioFeedback('Error: ' + textStatus);
+                        }
+                    });
+                }
+            }
+
+            function appendMessage(role, text) {
+                const messageElement = `<div class="message ${role}"><div class="text">${text}</div></div>`;
+                $('#chat-body').append(messageElement);
+                $('#chat-body').scrollTop($('#chat-body')[0].scrollHeight);
+            }
+
+            function startVoiceRecognition() {
+                const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+                recognition.lang = 'en-US'; // Default language
+                recognition.interimResults = false;
+                recognition.maxAlternatives = 1;
+
+                recognition.onresult = function(event) {
+                    const transcript = event.results[0][0].transcript;
+                    $('#user_input').val(transcript);
+                    sendMessage();
+                };
+
+                recognition.onerror = function(event) {
+                    console.error('Speech recognition error', event);
+                    provideAudioFeedback('Speech recognition error');
+                };
+
+                recognition.start();
+            }
+
+            function provideAudioFeedback(message) {
+                if (speechSynthesisUtterance) {
+                    window.speechSynthesis.cancel();
+                }
+                speechSynthesisUtterance = new SpeechSynthesisUtterance(message);
+                window.speechSynthesis.speak(speechSynthesisUtterance);
+            }
+
+            function playSpeech() {
+                if (currentMessage) {
+                    provideAudioFeedback(currentMessage);
+                }
+            }
+
+            function pauseSpeech() {
+                if (window.speechSynthesis.speaking) {
+                    window.speechSynthesis.cancel();
+                }
+            }
+
+            function playAudio(url) {
+                const audio = new Audio(url);
+                audio.play();
+            }
+        });
+    </script>
+</body>
+</html>
